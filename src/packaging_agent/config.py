@@ -10,11 +10,20 @@ class Settings:
     """Agent runtime configuration settings."""
 
     # LLM Settings
+    llm_provider: str = field(
+        default_factory=lambda: os.getenv("LLM_PROVIDER", "gemini" if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") else "openai").lower()
+    )
     openai_api_key: str = field(
         default_factory=lambda: os.getenv("OPENAI_API_KEY", "")
     )
     openai_model: str = field(
         default_factory=lambda: os.getenv("OPENAI_MODEL", "gpt-4o")
+    )
+    gemini_api_key: str = field(
+        default_factory=lambda: os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
+    )
+    gemini_model: str = field(
+        default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
     )
     temperature: float = 0.0
 

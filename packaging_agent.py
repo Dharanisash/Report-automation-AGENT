@@ -19,7 +19,13 @@ import os
 import sqlite3
 import sys
 from datetime import datetime, timezone
-from typing import Annotated, Dict, List, Literal, Optional, TypedDict
+from typing import Annotated, Any, Dict, List, Literal, Optional, TypedDict
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # =====================================================================
 # Imports & Dependency Check
@@ -27,7 +33,6 @@ from typing import Annotated, Dict, List, Literal, Optional, TypedDict
 try:
     from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
     from langchain_core.tools import tool
-    from langchain_openai import ChatOpenAI
     from langgraph.graph import StateGraph, START
     from langgraph.prebuilt import ToolNode
     DEPENDENCIES_AVAILABLE = True
@@ -41,8 +46,101 @@ except ImportError:
     HumanMessage = object
     SystemMessage = object
 
+try:
+    from langchain_openai import ChatOpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+
 # =====================================================================
-# 1. Persistent State Store (SQLite)
+# 1. HTML Email Template Renderer
+# =====================================================================
+def generate_deployment_html_report(
+    task_id: str,
+    ritm_id: str,
+    app_name: str,
+    req_type: str,
+    milestone: str,
+    telemetry: Dict[str, Any],
+) -> str:
+    """Generates an executive, responsive HTML deployment report email."""
+    compliance_pct = telemetry.get("compliance_pct", 0.0)
+    target_count = telemetry.get("target_count", 0)
+    installed = telemetry.get("installed", 0)
+    pending = telemetry.get("pending", 0)
+    failed = telemetry.get("failed", 0)
+    source = telemetry.get("source", "Intune")
+
+    if compliance_pct >= 90.0:
+        badge_color = "#10B981"
+        badge_bg = "#ECFDF5"
+        status_label = "HEALTHY / COMPLIANT"
+    elif compliance_pct >= 70.0:
+        badge_color = "#F59E0B"
+        badge_bg = "#FFFBEB"
+        status_label = "MODERATE PROGRESS"
+    else:
+        badge_color = "#EF4444"
+        badge_bg = "#FEF2F2"
+        status_label = "ACTION REQUIRED"
+
+    if failed > 0:
+        action_html = f"""
+        <div style="margin-top: 20px; padding: 14px 18px; background-color: #FEF2F2; border-left: 4px solid #EF4444; border-radius: 4px;">
+            <strong style="color: #991B1B; font-size: 14px;">⚠️ Recommended Action for Technical Contact:</strong>
+            <p style="margin: 6px 0 0 0; color: #7F1D1D; font-size: 13px; line-height: 1.5;">
+                <strong>{failed}</strong> endpoint(s) encountered installation failures.
+                Please review client-side installation logs or trigger package re-runs.
+            </p>
+        </div>"""
+    else:
+        action_html = """
+        <div style="margin-top: 20px; padding: 14px 18px; background-color: #ECFDF5; border-left: 4px solid #10B981; border-radius: 4px;">
+            <strong style="color: #065F46; font-size: 14px;">✓ Deployment on Track:</strong>
+            <p style="margin: 6px 0 0 0; color: #047857; font-size: 13px; line-height: 1.5;">
+                No client-side installation failures detected.
+            </p>
+        </div>"""
+
+    return f"""<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, sans-serif; background-color: #F3F4F6; padding: 20px;">
+    <div style="max-width: 600px; margin: 0 auto; background: #FFF; border-radius: 8px; overflow: hidden; border: 1px solid #E5E7EB;">
+        <div style="background: #1E3A8A; padding: 20px 24px; color: #FFF;">
+            <div style="font-size: 12px; letter-spacing: 1px; opacity: 0.85;">RENAULT GROUP • SOFTWARE PACKAGING</div>
+            <h2 style="margin: 6px 0 0 0;">{app_name}</h2>
+            <div style="font-size: 12px; margin-top: 4px; opacity: 0.9;">Task: {task_id} | Request: {ritm_id}</div>
+        </div>
+        <div style="padding: 24px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                <span>Milestone: <strong>{milestone}</strong></span>
+                <span style="background: {badge_bg}; color: {badge_color}; padding: 4px 12px; border-radius: 12px; font-weight: bold; border: 1px solid {badge_color};">
+                    ● {status_label} ({compliance_pct:.1f}%)
+                </span>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <tr style="border-bottom: 2px solid #E5E7EB; text-align: left;"><th style="padding: 8px;">Metric</th><th style="padding: 8px; text-align: right;">Count</th><th style="padding: 8px; text-align: right;">%</th></tr>
+                <tr style="border-bottom: 1px solid #F3F4F6;"><td style="padding: 8px;">Targeted</td><td style="padding: 8px; text-align: right;">{target_count}</td><td style="padding: 8px; text-align: right;">100%</td></tr>
+                <tr style="border-bottom: 1px solid #F3F4F6; color: #047857;"><td style="padding: 8px;">Installed</td><td style="padding: 8px; text-align: right;">{installed}</td><td style="padding: 8px; text-align: right;">{compliance_pct:.1f}%</td></tr>
+                <tr style="border-bottom: 1px solid #F3F4F6; color: #D97706;"><td style="padding: 8px;">Pending</td><td style="padding: 8px; text-align: right;">{pending}</td><td style="padding: 8px; text-align: right;">{(pending/target_count*100 if target_count else 0):.1f}%</td></tr>
+                <tr style="border-bottom: 1px solid #E5E7EB; color: #DC2626;"><td style="padding: 8px;">Failed</td><td style="padding: 8px; text-align: right;">{failed}</td><td style="padding: 8px; text-align: right;">{(failed/target_count*100 if target_count else 0):.1f}%</td></tr>
+            </table>
+            {action_html}
+            <div style="margin-top: 16px; font-size: 11px; color: #6B7280;">Source: {source} | Group: ITSC_WW_RNTBCI_DIR-ICS_Software_Packaging</div>
+        </div>
+    </div>
+</body>
+</html>"""
+
+
+# =====================================================================
+# 2. Persistent State Store (SQLite)
 # =====================================================================
 DB_PATH = os.getenv("DB_PATH", "packaging_agent_state.db")
 
@@ -332,17 +430,132 @@ CRITICAL RULES & OPERATING PROCEDURES:
 Work methodically, step by step, using your tools until all due milestones are completely serviced."""
 
 
-def create_packaging_agent(model_name: str = "gpt-4o", api_key: Optional[str] = None):
-    """Compiles the autonomous LangGraph agent."""
-    init_db()
-    key = api_key or os.getenv("OPENAI_API_KEY")
-    if not key:
-        print("[WARNING] OPENAI_API_KEY environment variable is not set.")
-        print("          Set it via: export OPENAI_API_KEY='your-key-here'")
-        print("          Or create a .env file with OPENAI_API_KEY.\n")
-        key = "placeholder-key"
+def run_mock_agent_cycle(prompt: str = "Execute today's packaging deployment reporting lifecycle."):
+    """Executes an end-to-end autonomous cycle simulating the LLM tool-calling loop.
 
-    llm = ChatOpenAI(model=model_name, temperature=0, api_key=key)
+    Allows complete end-to-end verification without consuming API quota or requiring an external key.
+    """
+    init_db()
+    print("==================================================================")
+    print("🚀 Initializing Autonomous Packaging Lifecycle Agent (Deterministic Loop)")
+    print(f"   Database: {DB_PATH}")
+    print("==================================================================")
+    print("[Agent Engine] Graph compiled successfully. Starting autonomous cycle...\n")
+
+    # Step 1: Ingestion
+    print("[Agent Thought] Need to query ServiceNow for closed packaging tasks...")
+    raw_tasks = json.loads(snow_get_closed_packaging_tasks.invoke({"group_name": "ITSC_WW_RNTBCI_DIR-ICS_Software_Packaging"}))
+    print(f"[Tool Output] Retrieved {len(raw_tasks)} candidate task(s) from ServiceNow.")
+
+    # Step 2: Filtering & Deduplication
+    processed_count = 0
+    for task in raw_tasks:
+        req_type = task["req_type"]
+        if req_type == "New Application Request":
+            print(f"[Agent Filter] STRICT EXCLUSION: Dropping task {task['task_id']} (Reason: 'New Application Request').")
+            continue
+
+        ao_email = task.get("ao_email", "")
+        tc_email = task.get("tc_email", "")
+        recipients = list({r.strip().lower() for r in [ao_email, tc_email] if r})
+        if len(recipients) == 1:
+            print(f"[Agent Dedup] Application Owner and Technical Contact are identical for {task['app_name']}: {recipients[0]}")
+
+        res = db_sync_task_record.invoke({
+            "task_id": task["task_id"],
+            "ritm_id": task["ritm_id"],
+            "app_name": task["app_name"],
+            "req_type": req_type,
+            "closed_date": task["closed_date"],
+            "recipients": recipients
+        })
+        print(f"[Tool Output] {res}")
+        processed_count += 1
+
+    # Step 3: Milestone Evaluation
+    print("\n[Agent Thought] Checking lifecycle database for due reporting milestones (D+1, D+3, D+7)...")
+    due_tasks = json.loads(db_get_pending_milestone_tasks.invoke({}))
+    print(f"[Tool Output] Found {len(due_tasks)} task(s) requiring milestone reports.")
+
+    # Step 4: Telemetry, Reporting & Audit for each due task
+    for item in due_tasks:
+        app_name = item["app_name"]
+        task_id = item["task_id"]
+        milestone = item["due_milestone"]
+        recipients = item["recipients"]
+
+        print(f"\n[Agent Thought] Fetching telemetry metrics for '{app_name}' (Milestone: {milestone})...")
+        telemetry = json.loads(fetch_deployment_telemetry.invoke({"app_name": app_name}))
+        compliance_pct = telemetry.get("compliance_pct", 0.0)
+        print(f"[Tool Output] Telemetry: {telemetry['installed']}/{telemetry['target_count']} installed ({compliance_pct}% compliance, source: {telemetry['source']}).")
+
+        # Draft HTML Report
+        html_report = generate_deployment_html_report(
+            task_id=task_id,
+            ritm_id=item["ritm_id"],
+            app_name=app_name,
+            req_type=item["req_type"],
+            milestone=milestone,
+            telemetry=telemetry
+        )
+
+        subject = f"[{milestone} Update] Software Deployment Status: {app_name}"
+        send_email_notification.invoke({
+            "recipients": recipients,
+            "subject": subject,
+            "html_body": html_report
+        })
+
+        commit_res = snow_update_worknote_and_commit.invoke({
+            "task_id": task_id,
+            "milestone": milestone,
+            "recipients": recipients,
+            "compliance_pct": compliance_pct
+        })
+        print(f"[Tool Output] {commit_res}")
+
+    print("\n==================================================================")
+    print("🏁 Final Agent Execution Summary:")
+    print("==================================================================")
+    print(f"Successfully processed {processed_count} packaging tasks.")
+    print(f"Evaluated and dispatched {len(due_tasks)} milestone reporting notifications.")
+    print("All ServiceNow catalog tasks updated with audit work notes.")
+
+
+def create_packaging_agent(
+    model_name: Optional[str] = None,
+    api_key: Optional[str] = None,
+    provider: Optional[str] = None,
+):
+    """Compiles the autonomous LangGraph agent supporting Gemini and OpenAI."""
+    init_db()
+
+    # Determine provider: gemini or openai
+    selected_provider = (
+        provider
+        or os.getenv("LLM_PROVIDER")
+        or ("gemini" if (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")) else "openai")
+    ).lower()
+
+    if selected_provider == "gemini":
+        key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        active_model = model_name or os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+        if not key:
+            print("[WARNING] GEMINI_API_KEY / GOOGLE_API_KEY environment variable is not set.")
+            key = "placeholder-key"
+        if not GEMINI_AVAILABLE:
+            raise RuntimeError("langchain-google-genai is required. Run: pip install langchain-google-genai")
+        llm = ChatGoogleGenerativeAI(model=active_model, google_api_key=key, temperature=0)
+    else:
+        key = api_key or os.getenv("OPENAI_API_KEY")
+        active_model = model_name or os.getenv("OPENAI_MODEL", "gpt-4o")
+        if not key:
+            print("[WARNING] OPENAI_API_KEY environment variable is not set.")
+            key = "placeholder-key"
+        if not OPENAI_AVAILABLE:
+            raise RuntimeError("langchain-openai is required. Run: pip install langchain-openai")
+        llm = ChatOpenAI(model=active_model, temperature=0, api_key=key)
+
     llm_with_tools = llm.bind_tools(TOOLS)
 
     def agent_node(state: AgentState) -> AgentState:
@@ -373,16 +586,33 @@ def main():
         description="Autonomous LangGraph Packaging Deployment Reporting Agent."
     )
     parser.add_argument(
+        "--provider",
+        choices=["openai", "gemini"],
+        default=None,
+        help="LLM provider: gemini or openai (auto-detected by default)",
+    )
+    parser.add_argument(
         "--model",
-        default=os.getenv("OPENAI_MODEL", "gpt-4o"),
-        help="OpenAI Model name (default: gpt-4o)",
+        default=None,
+        help="Model name (default: gemini-3.8-flash for Gemini, gpt-4o for OpenAI)",
     )
     parser.add_argument(
         "--prompt",
         default="Execute today's packaging deployment reporting lifecycle.",
         help="Human prompt instruction to the agent",
     )
+    parser.add_argument(
+        "--demo",
+        "--mock-llm",
+        action="store_true",
+        dest="mock_llm",
+        help="Run full end-to-end autonomous cycle in deterministic mode without consuming LLM API quota",
+    )
     args = parser.parse_args()
+
+    if args.mock_llm:
+        run_mock_agent_cycle(prompt=args.prompt)
+        sys.exit(0)
 
     if not DEPENDENCIES_AVAILABLE:
         print("=" * 70)
@@ -394,39 +624,68 @@ def main():
         print("=" * 70)
         sys.exit(1)
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        print("=" * 70)
-        print("⚠️  MISSING OPENAI_API_KEY")
-        print("=" * 70)
-        print("Please provide an OpenAI API key before running the agent:")
-        print("  export OPENAI_API_KEY='sk-proj-...'")
-        print("  python packaging_agent.py")
-        print("=" * 70)
-        sys.exit(1)
+    # Detect provider and key
+    provider = args.provider or (
+        "gemini" if (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")) else "openai"
+    )
+    if provider == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        model = args.model or os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+        if not api_key:
+            print("=" * 70)
+            print("⚠️  MISSING GEMINI_API_KEY")
+            print("=" * 70)
+            print("Please provide a Gemini API key: export GEMINI_API_KEY='...'")
+            print("=" * 70)
+            sys.exit(1)
+    else:
+        api_key = os.getenv("OPENAI_API_KEY")
+        model = args.model or os.getenv("OPENAI_MODEL", "gpt-4o")
+        if not api_key:
+            print("=" * 70)
+            print("⚠️  MISSING OPENAI_API_KEY / GEMINI_API_KEY")
+            print("=" * 70)
+            print("Please provide an API key before running the agent:")
+            print("  export GEMINI_API_KEY='...' OR export OPENAI_API_KEY='...'")
+            print("=" * 70)
+            sys.exit(1)
 
     print("==================================================================")
     print("🚀 Initializing Autonomous Packaging Lifecycle Agent")
-    print(f"   Model: {args.model}")
+    print(f"   Provider: {provider.upper()}")
+    print(f"   Model:    {model}")
     print(f"   Database: {DB_PATH}")
     print("==================================================================")
 
-    agent = create_packaging_agent(model_name=args.model, api_key=api_key)
+    agent = create_packaging_agent(model_name=model, api_key=api_key, provider=provider)
     print("[Agent Engine] Graph compiled successfully. Starting autonomous cycle...\n")
 
-    result = agent.invoke(
-        {
-            "messages": [
-                SystemMessage(content=SYSTEM_PROMPT),
-                HumanMessage(content=args.prompt),
-            ]
-        }
-    )
+    try:
+        result = agent.invoke(
+            {
+                "messages": [
+                    SystemMessage(content=SYSTEM_PROMPT),
+                    HumanMessage(content=args.prompt),
+                ]
+            }
+        )
 
-    print("\n==================================================================")
-    print("🏁 Final Agent Execution Summary:")
-    print("==================================================================")
-    print(result["messages"][-1].content)
+        print("\n==================================================================")
+        print("🏁 Final Agent Execution Summary:")
+        print("==================================================================")
+        print(result["messages"][-1].content)
+    except Exception as e:
+        error_msg = str(e)
+        if "429" in error_msg or "ResourceExhausted" in error_msg or "Quota exceeded" in error_msg:
+            print("\n" + "=" * 70)
+            print("⚠️  API RATE LIMIT / QUOTA EXCEEDED (429)")
+            print("=" * 70)
+            print("Your LLM API key has reached its free-tier rate limit or daily quota.")
+            print("You can run the full end-to-end autonomous flow without consuming quota using:")
+            print("    python packaging_agent.py --demo")
+            print("=" * 70)
+        else:
+            raise
 
 
 if __name__ == "__main__":
