@@ -1,0 +1,22 @@
+# Core LLM & Agent Framework
+langgraph>=0.2.20
+langchain>=0.2.14
+langchain-core>=0.2.35
+langchain-openai>=0.1.22
+
+# Data Validation & Serialization
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+
+# HTTP & API Integrations (ServiceNow, Microsoft Graph, Intune)
+requests>=2.31.0
+urllib3>=2.2.0
+
+# Environment & CLI
+python-dotenv>=1.0.1
+rich>=13.7.1
+
+# Testing & Code Quality
+pytest>=8.1.0
+pytest-cov>=5.0.0
+ruff>=0.4.0

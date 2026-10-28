@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  packaging-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: packaging-reporting-agent
+    env_file:
+      - .env
+    volumes:
+      - ./packaging_agent_state.db:/app/packaging_agent_state.db
+    restart: "no"

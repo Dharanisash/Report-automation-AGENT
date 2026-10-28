@@ -1,0 +1,35 @@
+name: Scheduled Daily Packaging Agent Run
+
+on:
+  schedule:
+    # Trigger every day at 08:00 UTC
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Execute Autonomous Agent Cycle
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        OPENAI_MODEL: "gpt-4o"
+        SNOW_INSTANCE_URL: ${{ secrets.SNOW_INSTANCE_URL }}
+        SNOW_USERNAME: ${{ secrets.SNOW_USERNAME }}
+        SNOW_PASSWORD: ${{ secrets.SNOW_PASSWORD }}
+        MOCK_EXTERNAL_SERVICES: "false"
+      run: |
+        python packaging_agent.py
