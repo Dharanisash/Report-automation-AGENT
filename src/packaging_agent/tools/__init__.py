@@ -10,6 +10,7 @@ from packaging_agent.tools.lifecycle import (
     db_sync_task_record,
     db_get_pending_milestone_tasks,
 )
+from packaging_agent.tools.excel_generator import generate_excel_deployment_report
 
 ALL_TOOLS = [
     snow_get_closed_packaging_tasks,
@@ -27,5 +28,6 @@ __all__ = [
     "fetch_deployment_telemetry",
     "send_email_notification",
     "snow_update_worknote_and_commit",
+    "generate_excel_deployment_report",
     "ALL_TOOLS",
 ]

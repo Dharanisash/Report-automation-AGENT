@@ -63,10 +63,23 @@ def snow_get_closed_packaging_tasks(
     # Default Mock Dataset (matches production test scenarios)
     tasks = [
         {
+            "task_id": "SCTASK2413127",
+            "ritm_id": "RITM2547538",
+            "req_type": "Existing Application",
+            "app_name": "ADaPT",
+            "version": "0.8.14",
+            "closed_date": "2026-09-28T08:00:00Z",
+            "ao_email": "ricardodavid.barrigaponcedeleon@renault.com",
+            "ao_name": "BARRIGAPONCEDELEON Ricardodavid",
+            "tc_email": "dharani.devi@renault.com",
+            "tc_name": "PALANISAMY Dharani-Devi",
+        },
+        {
             "task_id": "SCTASK2444402",
             "ritm_id": "RITM2566659",
             "req_type": "Existing Application",
             "app_name": "MAP STUDIO PRO",
+            "version": "2.4.1",
             "closed_date": "2026-10-27T08:00:00Z",  # D+1 relative to 2026-10-28
             "ao_email": "guillaume.meunier@renault.com",
             "ao_name": "MEUNIER Guillaume",
@@ -78,6 +91,7 @@ def snow_get_closed_packaging_tasks(
             "ritm_id": "RITM2566710",
             "req_type": "Horse Application",
             "app_name": "HORSE POWERTRAIN DIAG",
+            "version": "1.2.0",
             "closed_date": "2026-10-25T09:30:00Z",  # D+3 relative to 2026-10-28
             "ao_email": "brossard.arnaud@renault.com",
             "ao_name": "BROSSARD Arnaud",
@@ -89,6 +103,7 @@ def snow_get_closed_packaging_tasks(
             "ritm_id": "RITM2566799",
             "req_type": "New Application Request",
             "app_name": "NEW PROTOTYPE TOOL",
+            "version": "0.1.0",
             "closed_date": "2026-10-27T10:00:00Z",
             "ao_email": "user.new@renault.com",
             "ao_name": "NEW User",

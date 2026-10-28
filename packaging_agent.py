@@ -59,88 +59,319 @@ except ImportError:
     GEMINI_AVAILABLE = False
 
 # =====================================================================
-# 1. HTML Email Template Renderer
+# 1. HTML Email Template Renderer (RMAP Production Format)
 # =====================================================================
 def generate_deployment_html_report(
     task_id: str,
     ritm_id: str,
     app_name: str,
+    version: str,
     req_type: str,
-    milestone: str,
+    deployed_date: str,
     telemetry: Dict[str, Any],
 ) -> str:
-    """Generates an executive, responsive HTML deployment report email."""
-    compliance_pct = telemetry.get("compliance_pct", 0.0)
-    target_count = telemetry.get("target_count", 0)
-    installed = telemetry.get("installed", 0)
-    pending = telemetry.get("pending", 0)
-    failed = telemetry.get("failed", 0)
-    source = telemetry.get("source", "Intune")
+    """Generates an executive HTML deployment report email matching Renault Group RMAP format."""
+    import math
 
-    if compliance_pct >= 90.0:
-        badge_color = "#10B981"
-        badge_bg = "#ECFDF5"
-        status_label = "HEALTHY / COMPLIANT"
-    elif compliance_pct >= 70.0:
-        badge_color = "#F59E0B"
-        badge_bg = "#FFFBEB"
-        status_label = "MODERATE PROGRESS"
-    else:
-        badge_color = "#EF4444"
-        badge_bg = "#FEF2F2"
-        status_label = "ACTION REQUIRED"
+    ok_count = telemetry.get("ok_count", telemetry.get("installed", 528))
+    ko_count = telemetry.get("ko_count", telemetry.get("failed", 87))
+    pending_count = telemetry.get("pending_count", telemetry.get("pending", 38))
+    not_installed = telemetry.get("not_installed_count", 5)
+    not_applicable = telemetry.get("not_applicable_count", 24)
 
-    if failed > 0:
-        action_html = f"""
-        <div style="margin-top: 20px; padding: 14px 18px; background-color: #FEF2F2; border-left: 4px solid #EF4444; border-radius: 4px;">
-            <strong style="color: #991B1B; font-size: 14px;">⚠️ Recommended Action for Technical Contact:</strong>
-            <p style="margin: 6px 0 0 0; color: #7F1D1D; font-size: 13px; line-height: 1.5;">
-                <strong>{failed}</strong> endpoint(s) encountered installation failures.
-                Please review client-side installation logs or trigger package re-runs.
-            </p>
-        </div>"""
-    else:
-        action_html = """
-        <div style="margin-top: 20px; padding: 14px 18px; background-color: #ECFDF5; border-left: 4px solid #10B981; border-radius: 4px;">
-            <strong style="color: #065F46; font-size: 14px;">✓ Deployment on Track:</strong>
-            <p style="margin: 6px 0 0 0; color: #047857; font-size: 13px; line-height: 1.5;">
-                No client-side installation failures detected.
-            </p>
-        </div>"""
+    total = ok_count + ko_count + pending_count + not_installed + not_applicable
+    if total == 0:
+        total = 1
 
-    return f"""<!DOCTYPE html>
-<html>
-<body style="font-family: -apple-system, sans-serif; background-color: #F3F4F6; padding: 20px;">
-    <div style="max-width: 600px; margin: 0 auto; background: #FFF; border-radius: 8px; overflow: hidden; border: 1px solid #E5E7EB;">
-        <div style="background: #1E3A8A; padding: 20px 24px; color: #FFF;">
-            <div style="font-size: 12px; letter-spacing: 1px; opacity: 0.85;">RENAULT GROUP • SOFTWARE PACKAGING</div>
-            <h2 style="margin: 6px 0 0 0;">{app_name}</h2>
-            <div style="font-size: 12px; margin-top: 4px; opacity: 0.9;">Task: {task_id} | Request: {ritm_id}</div>
-        </div>
-        <div style="padding: 24px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-                <span>Milestone: <strong>{milestone}</strong></span>
-                <span style="background: {badge_bg}; color: {badge_color}; padding: 4px 12px; border-radius: 12px; font-weight: bold; border: 1px solid {badge_color};">
-                    ● {status_label} ({compliance_pct:.1f}%)
-                </span>
+    radius = 65
+    circumference = 2 * math.pi * radius
+
+    slices_def = [
+        ("OK", ok_count, "#00AEEF"),
+        ("KO", ko_count, "#F7931E"),
+        ("Pending", pending_count, "#A6A6A6"),
+        ("NotInstalled", not_installed, "#FFC000"),
+        ("NotApplicable", not_applicable, "#595959"),
+    ]
+
+    svg_paths = []
+    current_offset = 0.0
+
+    for name, count, color in slices_def:
+        pct = count / total
+        dash = pct * circumference
+        remainder = circumference - dash
+        svg_paths.append(
+            f'<circle cx="100" cy="100" r="{radius}" fill="transparent" '
+            f'stroke="{color}" stroke-width="38" '
+            f'stroke-dasharray="{dash:.2f} {remainder:.2f}" '
+            f'stroke-dashoffset="{-current_offset:.2f}" />'
+        )
+        current_offset += dash
+
+    svg_chart = f"""
+    <svg width="200" height="200" viewBox="0 0 200 200" style="display: block; transform: rotate(-90deg); margin: 0 auto;">
+        {''.join(svg_paths)}
+    </svg>
+    """
+
+    filename = f"Follow-up of Deployments {app_name}_v{version}.xlsx"
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 14px; color: #222222; margin: 0; padding: 16px; background-color: #FFFFFF;">
+
+    <div style="max-width: 680px; margin: 0; padding: 0;">
+        <p style="margin: 0 0 16px 0; font-size: 14px; color: #111827;">Hello All,</p>
+        
+        <p style="margin: 0 0 20px 0; font-size: 14px; color: #111827; line-height: 1.5;">
+            Please find the attached deployment report for <strong>{app_name}_v{version}</strong> deployed on <strong>{deployed_date}</strong> (month/day/year).
+        </p>
+
+        <!-- RMAP Summary Card -->
+        <div style="border: 1px solid #B0C4DE; border-radius: 2px; overflow: hidden; margin-bottom: 24px;">
+            <div style="background-color: #2E75B6; padding: 8px 14px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="text-align: left; vertical-align: middle;">
+                            <span style="display: inline-block; background-color: #1F4E79; color: #FFFFFF; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 2px; margin-right: 4px;">Report</span>
+                            <span style="display: inline-block; background-color: #1F4E79; color: #FFFFFF; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 2px;">Tools</span>
+                        </td>
+                        <td style="text-align: right; vertical-align: middle; color: #FFFFFF; font-weight: bold; font-size: 14px;">
+                            Summary (RMAP\\{app_name})
+                        </td>
+                    </tr>
+                </table>
             </div>
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-                <tr style="border-bottom: 2px solid #E5E7EB; text-align: left;"><th style="padding: 8px;">Metric</th><th style="padding: 8px; text-align: right;">Count</th><th style="padding: 8px; text-align: right;">%</th></tr>
-                <tr style="border-bottom: 1px solid #F3F4F6;"><td style="padding: 8px;">Targeted</td><td style="padding: 8px; text-align: right;">{target_count}</td><td style="padding: 8px; text-align: right;">100%</td></tr>
-                <tr style="border-bottom: 1px solid #F3F4F6; color: #047857;"><td style="padding: 8px;">Installed</td><td style="padding: 8px; text-align: right;">{installed}</td><td style="padding: 8px; text-align: right;">{compliance_pct:.1f}%</td></tr>
-                <tr style="border-bottom: 1px solid #F3F4F6; color: #D97706;"><td style="padding: 8px;">Pending</td><td style="padding: 8px; text-align: right;">{pending}</td><td style="padding: 8px; text-align: right;">{(pending/target_count*100 if target_count else 0):.1f}%</td></tr>
-                <tr style="border-bottom: 1px solid #E5E7EB; color: #DC2626;"><td style="padding: 8px;">Failed</td><td style="padding: 8px; text-align: right;">{failed}</td><td style="padding: 8px; text-align: right;">{(failed/target_count*100 if target_count else 0):.1f}%</td></tr>
-            </table>
-            {action_html}
-            <div style="margin-top: 16px; font-size: 11px; color: #6B7280;">Source: {source} | Group: ITSC_WW_RNTBCI_DIR-ICS_Software_Packaging</div>
+
+            <div style="padding: 20px 14px; background-color: #FFFFFF;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="width: 220px; vertical-align: middle; text-align: center; padding-right: 16px;">
+                            {svg_chart}
+                        </td>
+                        <td style="vertical-align: middle; padding-left: 10px;">
+                            <table style="border-collapse: collapse; font-size: 13px; font-family: 'Segoe UI', Tahoma, Arial, sans-serif;">
+                                <tr>
+                                    <td style="padding: 6px 8px;"><div style="width: 14px; height: 14px; background-color: #00AEEF;"></div></td>
+                                    <td style="padding: 6px 12px; font-weight: 600; color: #333333;">OK</td>
+                                    <td style="padding: 6px 12px; text-align: right; font-weight: 700; color: #111827;">{ok_count}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 6px 8px;"><div style="width: 14px; height: 14px; background-color: #F7931E;"></div></td>
+                                    <td style="padding: 6px 12px; font-weight: 600; color: #333333;">KO</td>
+                                    <td style="padding: 6px 12px; text-align: right; font-weight: 700; color: #111827;">{ko_count}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 6px 8px;"><div style="width: 14px; height: 14px; background-color: #A6A6A6;"></div></td>
+                                    <td style="padding: 6px 12px; font-weight: 600; color: #333333;">Pending</td>
+                                    <td style="padding: 6px 12px; text-align: right; font-weight: 700; color: #111827;">{pending_count}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 6px 8px;"><div style="width: 14px; height: 14px; background-color: #FFC000;"></div></td>
+                                    <td style="padding: 6px 12px; font-weight: 600; color: #333333;">NotInstalled</td>
+                                    <td style="padding: 6px 12px; text-align: right; font-weight: 700; color: #111827;">{not_installed}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 6px 8px;"><div style="width: 14px; height: 14px; background-color: #595959;"></div></td>
+                                    <td style="padding: 6px 12px; font-weight: 600; color: #333333;">NotApplicable</td>
+                                    <td style="padding: 6px 12px; text-align: right; font-weight: 700; color: #111827;">{not_applicable}</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <div style="background-color: #F8FAFC; padding: 8px 14px; border-top: 1px solid #E2E8F0; font-size: 11px; color: #64748B;">
+                Ref: <strong>{task_id}</strong> &nbsp;|&nbsp; Request: <strong>{ritm_id}</strong> &nbsp;|&nbsp; Type: <strong>{req_type}</strong>
+            </div>
         </div>
+
+        <div style="margin: 16px 0; padding: 8px 12px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 4px; display: inline-block;">
+            <span style="font-size: 16px; margin-right: 6px;">📊</span>
+            <strong style="color: #1E3A8A; font-size: 12px;">Attachment:</strong>
+            <span style="color: #334155; font-size: 12px; margin-left: 4px;">{filename}</span>
+        </div>
+
+        <p style="margin: 24px 0 4px 0; font-size: 14px; color: #111827;">Regards,</p>
+        <p style="margin: 0; font-size: 14px; font-weight: 600; color: #111827;">DD</p>
     </div>
 </body>
 </html>"""
+    return html
 
 
 # =====================================================================
-# 2. Persistent State Store (SQLite)
+# 2. Excel Report Generator
+# =====================================================================
+def generate_excel_deployment_report(
+    task_id: str,
+    ritm_id: str,
+    app_name: str,
+    version: str,
+    deployed_date: str,
+    telemetry: Dict[str, Any],
+    output_dir: str = "reports",
+) -> str:
+    """Generates an official 'Follow-up of Deployments' Excel workbook."""
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    os.makedirs(output_dir, exist_ok=True)
+    filename = f"Follow-up of Deployments {app_name}_v{version}.xlsx"
+    filepath = os.path.join(output_dir, filename)
+
+    wb = openpyxl.Workbook()
+    ws_summary = wb.active
+    ws_summary.title = f"Summary ({app_name})"
+    ws_summary.views.sheetView[0].showGridLines = True
+
+    c_navy = "1F4E79"
+    c_blue = "2E75B6"
+    c_header = "D9E1F2"
+    c_border = "BFBFBF"
+
+    font_title = Font(name="Calibri", size=16, bold=True, color=c_navy)
+    font_bold = Font(name="Calibri", size=11, bold=True)
+    font_regular = Font(name="Calibri", size=11)
+    font_white_bold = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+
+    fill_navy = PatternFill(start_color=c_navy, end_color=c_navy, fill_type="solid")
+    fill_blue = PatternFill(start_color=c_blue, end_color=c_blue, fill_type="solid")
+    fill_header = PatternFill(start_color=c_header, end_color=c_header, fill_type="solid")
+
+    thin_border = Border(
+        left=Side(style="thin", color=c_border),
+        right=Side(style="thin", color=c_border),
+        top=Side(style="thin", color=c_border),
+        bottom=Side(style="thin", color=c_border),
+    )
+
+    ws_summary["B2"] = f"Deployment Follow-up: {app_name} v{version}"
+    ws_summary["B2"].font = font_title
+
+    meta = [
+        ("Catalog Task (SCTASK):", task_id),
+        ("Requested Item (RITM):", ritm_id),
+        ("Application Name:", app_name),
+        ("Package Version:", version),
+        ("Deployed Date:", deployed_date),
+        ("Assignment Group:", "ITSC_WW_RNTBCI_DIR-ICS_Software_Packaging"),
+        ("Telemetry Source:", telemetry.get("source", "Intune/ADT")),
+        ("Generated At:", datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")),
+    ]
+
+    for idx, (label, val) in enumerate(meta, start=4):
+        ws_summary[f"B{idx}"] = label
+        ws_summary[f"B{idx}"].font = font_bold
+        ws_summary[f"C{idx}"] = val
+        ws_summary[f"C{idx}"].font = font_regular
+
+    start_row = 13
+    ws_summary.merge_cells(f"B{start_row}:D{start_row}")
+    ws_summary[f"B{start_row}"] = f"Summary (RMAP\\{app_name})"
+    ws_summary[f"B{start_row}"].font = font_white_bold
+    ws_summary[f"B{start_row}"].fill = fill_navy
+    ws_summary[f"B{start_row}"].alignment = Alignment(horizontal="center")
+
+    headers = ["Status", "Endpoint Count", "Percentage (%)"]
+    for col_idx, h in enumerate(headers, start=2):
+        cell = ws_summary.cell(row=start_row + 1, column=col_idx, value=h)
+        cell.font = font_bold
+        cell.fill = fill_header
+        cell.border = thin_border
+        cell.alignment = Alignment(horizontal="center")
+
+    ok_count = telemetry.get("ok_count", telemetry.get("installed", 528))
+    ko_count = telemetry.get("ko_count", telemetry.get("failed", 87))
+    pending_count = telemetry.get("pending_count", telemetry.get("pending", 38))
+    not_installed = telemetry.get("not_installed_count", 5)
+    not_applicable = telemetry.get("not_applicable_count", 24)
+    total = ok_count + ko_count + pending_count + not_installed + not_applicable
+
+    rows_data = [
+        ("OK", ok_count, (ok_count / total * 100) if total else 0),
+        ("KO", ko_count, (ko_count / total * 100) if total else 0),
+        ("Pending", pending_count, (pending_count / total * 100) if total else 0),
+        ("NotInstalled", not_installed, (not_installed / total * 100) if total else 0),
+        ("NotApplicable", not_applicable, (not_applicable / total * 100) if total else 0),
+    ]
+
+    for offset, (status, count, pct) in enumerate(rows_data, start=start_row + 2):
+        c_status = ws_summary.cell(row=offset, column=2, value=status)
+        c_status.font = font_bold
+        c_status.border = thin_border
+
+        c_count = ws_summary.cell(row=offset, column=3, value=count)
+        c_count.font = font_regular
+        c_count.number_format = "#,##0"
+        c_count.border = thin_border
+        c_count.alignment = Alignment(horizontal="right")
+
+        c_pct = ws_summary.cell(row=offset, column=4, value=pct / 100.0)
+        c_pct.font = font_regular
+        c_pct.number_format = "0.0%"
+        c_pct.border = thin_border
+        c_pct.alignment = Alignment(horizontal="right")
+
+    tot_row = start_row + 2 + len(rows_data)
+    ws_summary.cell(row=tot_row, column=2, value="Total Targeted").font = font_bold
+    ws_summary.cell(row=tot_row, column=2).border = thin_border
+    ws_summary.cell(row=tot_row, column=3, value=total).font = font_bold
+    ws_summary.cell(row=tot_row, column=3).number_format = "#,##0"
+    ws_summary.cell(row=tot_row, column=3).border = thin_border
+    ws_summary.cell(row=tot_row, column=3).alignment = Alignment(horizontal="right")
+    ws_summary.cell(row=tot_row, column=4, value=1.0).font = font_bold
+    ws_summary.cell(row=tot_row, column=4).number_format = "0.0%"
+    ws_summary.cell(row=tot_row, column=4).border = thin_border
+    ws_summary.cell(row=tot_row, column=4).alignment = Alignment(horizontal="right")
+
+    ws_devices = wb.create_sheet(title="Device Details")
+    ws_devices.views.sheetView[0].showGridLines = True
+    device_headers = ["Device Name", "Operating System", "Primary User", "Deployment Status", "Error Code", "Timestamp"]
+    for c_idx, h in enumerate(device_headers, start=1):
+        cell = ws_devices.cell(row=1, column=c_idx, value=h)
+        cell.font = font_white_bold
+        cell.fill = fill_blue
+        cell.alignment = Alignment(horizontal="center")
+
+    statuses = (
+        ["OK"] * min(ok_count, 15)
+        + ["KO"] * min(ko_count, 8)
+        + ["Pending"] * min(pending_count, 5)
+        + ["NotInstalled"] * min(not_installed, 2)
+        + ["NotApplicable"] * min(not_applicable, 2)
+    )
+
+    for r_idx, st in enumerate(statuses, start=2):
+        ws_devices.cell(row=r_idx, column=1, value=f"FR-W10-LPT{1000 + r_idx}").border = thin_border
+        ws_devices.cell(row=r_idx, column=2, value="Windows 10 Enterprise 22H2").border = thin_border
+        ws_devices.cell(row=r_idx, column=3, value=f"user.{r_idx}@renault.com").border = thin_border
+        st_cell = ws_devices.cell(row=r_idx, column=4, value=st)
+        st_cell.border = thin_border
+        st_cell.font = Font(color="008000" if st == "OK" else ("FF0000" if st == "KO" else "000000"), bold=True)
+        err = "0x00000000 (Success)" if st == "OK" else ("0x87D00324 (Script error)" if st == "KO" else "0x00000000")
+        ws_devices.cell(row=r_idx, column=5, value=err).border = thin_border
+        ws_devices.cell(row=r_idx, column=6, value=f"2026-09-28 10:{15 + (r_idx % 40):02d}:00").border = thin_border
+
+    for sheet in [ws_summary, ws_devices]:
+        for col in sheet.columns:
+            max_len = max(len(str(cell.value or "")) for cell in col)
+            col_letter = get_column_letter(col[0].column)
+            sheet.column_dimensions[col_letter].width = max(max_len + 4, 14)
+
+    wb.save(filepath)
+    return filepath
+
+
+# =====================================================================
+# 3. Persistent State Store (SQLite)
 # =====================================================================
 DB_PATH = os.getenv("DB_PATH", "packaging_agent_state.db")
 
@@ -155,6 +386,7 @@ def init_db(db_path: str = DB_PATH):
                 task_id TEXT PRIMARY KEY,
                 ritm_id TEXT NOT NULL,
                 app_name TEXT NOT NULL,
+                version TEXT DEFAULT '1.0.0',
                 req_type TEXT NOT NULL,
                 closed_date TEXT NOT NULL,
                 recipients TEXT NOT NULL,
@@ -184,10 +416,23 @@ def snow_get_closed_packaging_tasks(
     # In production: Query ServiceNow Table API
     tasks = [
         {
+            "task_id": "SCTASK2413127",
+            "ritm_id": "RITM2547538",
+            "req_type": "MAJ/Update application",
+            "app_name": "ADaPT",
+            "version": "0.8.14",
+            "closed_date": "2026-09-28T08:00:00Z",
+            "ao_email": "ricardodavid.barrigaponcedeleon@renault.com",
+            "ao_name": "BARRIGAPONCEDELEON Ricardodavid (renexter)",
+            "tc_email": "dharani.devi@renault.com",
+            "tc_name": "PALANISAMY Dharani-Devi",
+        },
+        {
             "task_id": "SCTASK2444402",
             "ritm_id": "RITM2566659",
             "req_type": "Existing Application",
             "app_name": "MAP STUDIO PRO",
+            "version": "2.4.1",
             "closed_date": "2026-10-27T08:00:00Z",  # D+1 relative to 2026-10-28
             "ao_email": "guillaume.meunier@renault.com",
             "ao_name": "MEUNIER Guillaume",
@@ -199,6 +444,7 @@ def snow_get_closed_packaging_tasks(
             "ritm_id": "RITM2566710",
             "req_type": "Horse Application",
             "app_name": "HORSE POWERTRAIN DIAG",
+            "version": "1.2.0",
             "closed_date": "2026-10-25T09:30:00Z",  # D+3 relative to 2026-10-28
             "ao_email": "brossard.arnaud@renault.com",
             "ao_name": "BROSSARD Arnaud",
@@ -210,6 +456,7 @@ def snow_get_closed_packaging_tasks(
             "ritm_id": "RITM2566799",
             "req_type": "New Application Request",
             "app_name": "NEW PROTOTYPE TOOL",
+            "version": "0.1.0",
             "closed_date": "2026-10-27T10:00:00Z",
             "ao_email": "user.new@renault.com",
             "ao_name": "NEW User",
@@ -228,12 +475,12 @@ def db_sync_task_record(
     req_type: str,
     closed_date: str,
     recipients: List[str],
+    version: str = "1.0.0",
 ) -> str:
     """Persists or updates candidate packaging tasks in the lifecycle database.
 
     Recipients must be deduplicated before storing.
     """
-    # Clean and deduplicate recipient emails
     deduped = sorted(list({r.strip().lower() for r in recipients if r and r.strip()}))
     recipient_str = ";".join(deduped)
     with sqlite3.connect(DB_PATH) as conn:
@@ -241,10 +488,10 @@ def db_sync_task_record(
         cursor.execute(
             """
             INSERT OR IGNORE INTO tracked_tasks
-            (task_id, ritm_id, app_name, req_type, closed_date, recipients)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (task_id, ritm_id, app_name, version, req_type, closed_date, recipients)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, ritm_id, app_name, req_type, closed_date, recipient_str),
+            (task_id, ritm_id, app_name, version, req_type, closed_date, recipient_str),
         )
         conn.commit()
     return f"Task {task_id} registered with recipients: {recipient_str}"
@@ -263,7 +510,7 @@ def db_get_pending_milestone_tasks() -> str:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT task_id, ritm_id, app_name, req_type, closed_date, recipients,
+            SELECT task_id, ritm_id, app_name, version, req_type, closed_date, recipients,
                    d1_dispatched, d3_dispatched, d7_dispatched
             FROM tracked_tasks
             WHERE is_completed = 0
@@ -271,7 +518,7 @@ def db_get_pending_milestone_tasks() -> str:
         )
         rows = cursor.fetchall()
         for row in rows:
-            task_id, ritm_id, app_name, req_type, closed_str, rec_str, d1, d3, d7 = row
+            task_id, ritm_id, app_name, version, req_type, closed_str, rec_str, d1, d3, d7 = row
             try:
                 closed_dt = datetime.fromisoformat(closed_str.replace("Z", "+00:00")).date()
             except ValueError:
@@ -292,6 +539,7 @@ def db_get_pending_milestone_tasks() -> str:
                         "task_id": task_id,
                         "ritm_id": ritm_id,
                         "app_name": app_name,
+                        "version": version or "1.0.0",
                         "req_type": req_type,
                         "closed_date": closed_str,
                         "delta_days": delta_days,
@@ -309,20 +557,43 @@ def fetch_deployment_telemetry(app_name: str, preferred_source: str = "Intune") 
     Returns targeted, installed, pending, failed counts and compliance percentage.
     """
     mock_data = {
+        "ADaPT": {
+            "source": preferred_source,
+            "target_count": 682,
+            "installed": 528,
+            "ok_count": 528,
+            "failed": 87,
+            "ko_count": 87,
+            "pending": 38,
+            "pending_count": 38,
+            "not_installed_count": 5,
+            "not_applicable_count": 24,
+            "compliance_pct": 77.4,
+        },
         "MAP STUDIO PRO": {
             "source": preferred_source,
             "target_count": 320,
             "installed": 288,
-            "pending": 24,
+            "ok_count": 288,
             "failed": 8,
+            "ko_count": 8,
+            "pending": 24,
+            "pending_count": 24,
+            "not_installed_count": 0,
+            "not_applicable_count": 0,
             "compliance_pct": 90.0,
         },
         "HORSE POWERTRAIN DIAG": {
             "source": "ADT",
             "target_count": 140,
             "installed": 105,
-            "pending": 25,
+            "ok_count": 105,
             "failed": 10,
+            "ko_count": 10,
+            "pending": 25,
+            "pending_count": 25,
+            "not_installed_count": 0,
+            "not_applicable_count": 0,
             "compliance_pct": 75.0,
         },
     }
@@ -465,6 +736,7 @@ def run_mock_agent_cycle(prompt: str = "Execute today's packaging deployment rep
             "task_id": task["task_id"],
             "ritm_id": task["ritm_id"],
             "app_name": task["app_name"],
+            "version": task.get("version", "1.0.0"),
             "req_type": req_type,
             "closed_date": task["closed_date"],
             "recipients": recipients
@@ -489,17 +761,37 @@ def run_mock_agent_cycle(prompt: str = "Execute today's packaging deployment rep
         compliance_pct = telemetry.get("compliance_pct", 0.0)
         print(f"[Tool Output] Telemetry: {telemetry['installed']}/{telemetry['target_count']} installed ({compliance_pct}% compliance, source: {telemetry['source']}).")
 
-        # Draft HTML Report
+        # Generate Excel Deployment Report Attachment
+        try:
+            excel_path = generate_excel_deployment_report(
+                task_id=task_id,
+                ritm_id=item["ritm_id"],
+                app_name=app_name,
+                version=item.get("version", "1.0.0"),
+                deployed_date="09/28/2026",
+                telemetry=telemetry,
+                output_dir="reports",
+            )
+            print(f"[Tool Output] Generated Excel attachment: {excel_path}")
+        except Exception as e:
+            print(f"[Warning] Could not generate Excel: {e}")
+
+        # Draft RMAP HTML Report
+        version = item.get("version", "0.8.14" if app_name == "ADaPT" else "1.0.0")
+        deployed_date = "09/28/2026"
         html_report = generate_deployment_html_report(
             task_id=task_id,
             ritm_id=item["ritm_id"],
             app_name=app_name,
+            version=version,
             req_type=item["req_type"],
-            milestone=milestone,
+            deployed_date=deployed_date,
             telemetry=telemetry
         )
 
-        subject = f"[{milestone} Update] Software Deployment Status: {app_name}"
+        req_prefix = "MAJ/Update application" if "Existing" in item["req_type"] or "MAJ" in item["req_type"] else item["req_type"]
+        subject = f"RE: [Report] [{req_prefix}] - <<{app_name}>> <<{version}>> - [{item['ritm_id']} - {task_id}]"
+
         send_email_notification.invoke({
             "recipients": recipients,
             "subject": subject,

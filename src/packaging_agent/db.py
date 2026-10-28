@@ -17,6 +17,7 @@ def init_db(db_path: Optional[str] = None) -> None:
                 task_id TEXT PRIMARY KEY,
                 ritm_id TEXT NOT NULL,
                 app_name TEXT NOT NULL,
+                version TEXT DEFAULT '1.0.0',
                 req_type TEXT NOT NULL,
                 closed_date TEXT NOT NULL,
                 recipients TEXT NOT NULL,
@@ -38,6 +39,7 @@ def sync_task_record(
     req_type: str,
     closed_date: str,
     recipients: List[str],
+    version: str = "1.0.0",
     db_path: Optional[str] = None,
 ) -> str:
     """Persists or updates candidate packaging tasks in the lifecycle database.
@@ -45,7 +47,6 @@ def sync_task_record(
     Deduplicates email recipients and ignores duplicate task insertions.
     """
     path = db_path or settings.db_path
-    # Ensure recipient deduplication and clean formatting
     deduped_recipients = sorted(list({r.strip().lower() for r in recipients if r and r.strip()}))
     recipient_str = ";".join(deduped_recipients)
 
@@ -54,10 +55,10 @@ def sync_task_record(
         cursor.execute(
             """
             INSERT OR IGNORE INTO tracked_tasks
-            (task_id, ritm_id, app_name, req_type, closed_date, recipients)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (task_id, ritm_id, app_name, version, req_type, closed_date, recipients)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, ritm_id, app_name, req_type, closed_date, recipient_str),
+            (task_id, ritm_id, app_name, version, req_type, closed_date, recipient_str),
         )
         conn.commit()
     return f"Task {task_id} registered with recipients: {recipient_str}"
@@ -79,7 +80,7 @@ def get_pending_milestone_tasks(
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT task_id, ritm_id, app_name, req_type, closed_date, recipients,
+            SELECT task_id, ritm_id, app_name, version, req_type, closed_date, recipients,
                    d1_dispatched, d3_dispatched, d7_dispatched
             FROM tracked_tasks
             WHERE is_completed = 0
@@ -87,11 +88,10 @@ def get_pending_milestone_tasks(
         )
         rows = cursor.fetchall()
         for row in rows:
-            task_id, ritm_id, app_name, req_type, closed_str, rec_str, d1, d3, d7 = row
+            task_id, ritm_id, app_name, version, req_type, closed_str, rec_str, d1, d3, d7 = row
             try:
                 closed_dt = datetime.fromisoformat(closed_str.replace("Z", "+00:00")).date()
             except ValueError:
-                # Handle standard ISO YYYY-MM-DD format
                 closed_dt = datetime.strptime(closed_str[:10], "%Y-%m-%d").date()
 
             delta_days = (eval_date - closed_dt).days
@@ -110,6 +110,7 @@ def get_pending_milestone_tasks(
                         "task_id": task_id,
                         "ritm_id": ritm_id,
                         "app_name": app_name,
+                        "version": version or "1.0.0",
                         "req_type": req_type,
                         "closed_date": closed_str,
                         "delta_days": delta_days,

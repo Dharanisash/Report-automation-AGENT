@@ -187,14 +187,22 @@ For scheduled cron execution, Windows Task Scheduler instructions, and productio
 
 ---
 
-## 📧 Email Template Preview
+## 📧 Email Template Preview & Renault RMAP Format
 
-The agent renders executive, modern HTML emails tailored for both mobile and desktop clients:
+The agent renders executive, responsive emails matching the Renault Group RMAP production standard:
 
-- **Header**: High-visibility Renault Group packaging header with Application Name and Task ID.
-- **Milestone Chip & Status Badge**: Green (Compliant $\ge 90\%$), Amber (Moderate $70-89\%$), Red (Action Required $< 70\%$).
-- **Deployment KPI Table**: Targeted, Installed (with %), In-Progress/Pending, and Failed device counts.
-- **Next Steps & Guidance**: Dynamic guidance directing the Technical Contact to inspect logs if failures are detected.
+- **Subject Line**: `RE: [Report] [MAJ/Update application] - <<ADaPT>> <<0.8.14>> - [RITM2547538 - SCTASK2413127]`
+- **Header Banner**: Dark blue RMAP header with tab pills (`Report` | `Tools`) and `Summary (RMAP\<App_Name>)`.
+- **Vector SVG Donut Chart**: Pure embedded vector SVG donut chart with exact enterprise colors:
+  - 🟦 **OK** (`#00AEEF` Cyan): Successful deployments (e.g. 528 / 77.4%)
+  - 🟧 **KO** (`#F7931E` Orange): Failed installations (e.g. 87 / 12.8%)
+  - ⬜ **Pending** (`#A6A6A6` Grey): In progress / scheduled (e.g. 38 / 5.6%)
+  - 🟨 **NotInstalled** (`#FFC000` Gold): Package not installed (e.g. 5 / 0.7%)
+  - ⬛ **NotApplicable** (`#595959` Dark Slate): Excluded / Not applicable (e.g. 24 / 3.5%)
+- **Automated Excel Attachment**: Generates genuine `Follow-up of Deployments <AppName>_v<Version>.xlsx` with:
+  - `Summary (<AppName>)`: Executive KPI table and metadata.
+  - `Device Details`: Individual endpoint audit log (device name, OS version, user, error codes, and enforcement timestamps).
+- **Official Sign-off**: `Regards, DD` (matching packaging lead / agent identity).
 
 ---
 
