@@ -789,6 +789,15 @@ def run_mock_agent_cycle(prompt: str = "Execute today's packaging deployment rep
             telemetry=telemetry
         )
 
+        # Save HTML email preview to reports/ for instant browser inspection
+        try:
+            html_preview_path = os.path.join("reports", f"Email_Preview_{app_name}_v{version}.html")
+            with open(html_preview_path, "w", encoding="utf-8") as f:
+                f.write(html_report)
+            print(f"[Tool Output] Saved HTML email preview: {html_preview_path}")
+        except Exception as e:
+            print(f"[Warning] Could not save HTML preview: {e}")
+
         req_prefix = "MAJ/Update application" if "Existing" in item["req_type"] or "MAJ" in item["req_type"] else item["req_type"]
         subject = f"RE: [Report] [{req_prefix}] - <<{app_name}>> <<{version}>> - [{item['ritm_id']} - {task_id}]"
 
